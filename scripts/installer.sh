@@ -6,16 +6,19 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}Starting installation process...${NC}"
 
+# Install git if not present
 if ! command -v git &> /dev/null; then
     echo -e "${RED}Git is not installed. Installing Git...${NC}"
     sudo apt-get update
     sudo apt-get install -y git
 fi
 
+# Clone the repository
 echo -e "${GREEN}Cloning repository...${NC}"
 git clone https://github.com/awade12/dbforge-api.git
 cd dbforge-api
 
+# Install Docker if not present
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}Docker is not installed. Installing Docker...${NC}"
     curl -fsSL https://get.docker.com -o get-docker.sh
@@ -24,24 +27,40 @@ if ! command -v docker &> /dev/null; then
     rm get-docker.sh
 fi
 
+# Install certbot
 if ! command -v certbot &> /dev/null; then
     echo -e "${RED}Certbot is not installed. Installing Certbot...${NC}"
     sudo apt-get update
     sudo apt-get install -y certbot python3-certbot-nginx
 fi
 
-read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+# Domain name prompt with validation
+while true; do
+    read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+    if [ -z "$DOMAIN_NAME" ]; then
+        echo -e "${RED}Domain name cannot be empty. Please try again.${NC}"
+    else
+        break
+    fi
+done
+
+# Stop nginx temporarily for certbot
+if systemctl is-active --quiet nginx; then
+    sudo systemctl stop nginx
+fi
 
 echo -e "${GREEN}Obtaining SSL certificate for $DOMAIN_NAME...${NC}"
-sudo certbot certonly --standalone -d $DOMAIN_NAME
+sudo certbot certonly --standalone --non-interactive --agree-tos --email admin@$DOMAIN_NAME -d $DOMAIN_NAME
 
 echo -e "${GREEN}Building Docker image...${NC}"
 sudo docker build -t clidb-api .
 
+# Stop existing container if running
 CONTAINER_ID=$(docker ps -q --filter "name=clidb-api")
 if [ ! -z "$CONTAINER_ID" ]; then
     echo -e "${GREEN}Stopping existing container...${NC}"
     sudo docker stop $CONTAINER_ID
+    sudo docker rm $CONTAINER_ID
 fi
 
 echo -e "${GREEN}Starting container with SSL...${NC}"
@@ -57,4 +76,7 @@ echo -e "${GREEN}Installation complete!${NC}"
 echo -e "Your application is now running at https://$DOMAIN_NAME"
 echo -e "Please make sure your domain's DNS is properly configured to point to this server."
 
+# Add certbot renewal cron job
 (crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet") | crontab -
+
+# curl -sSL https://data.wadedesignco.com/storage/v1/object/public/metalove/installer.sh | sudo bash
