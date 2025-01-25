@@ -42,15 +42,29 @@ fi
 
 # Domain name prompt with validation
 DOMAIN_NAME=""
-while [ -z "$DOMAIN_NAME" ]; do
-    read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+while true; do
+    echo -e "${GREEN}Please enter your domain name:${NC}"
+    read -p "Domain (e.g., example.com): " DOMAIN_NAME
     if [ -z "$DOMAIN_NAME" ]; then
         echo -e "${RED}Domain name cannot be empty. Please try again.${NC}"
+        continue
+    fi
+    echo -e "${GREEN}You entered: $DOMAIN_NAME${NC}"
+    read -p "Is this correct? (y/n): " confirm
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        break
     fi
 done
 
+# Ensure domain name is set before proceeding
+if [ -z "$DOMAIN_NAME" ]; then
+    echo -e "${RED}Error: Domain name not set. Exiting.${NC}"
+    exit 1
+fi
+
 # Stop nginx temporarily for certbot
 if systemctl is-active --quiet nginx; then
+    echo -e "${GREEN}Stopping nginx for SSL certificate generation...${NC}"
     sudo systemctl stop nginx
 fi
 
