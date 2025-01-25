@@ -6,6 +6,16 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}Starting installation process...${NC}"
 
+if ! command -v git &> /dev/null; then
+    echo -e "${RED}Git is not installed. Installing Git...${NC}"
+    sudo apt-get update
+    sudo apt-get install -y git
+fi
+
+echo -e "${GREEN}Cloning repository...${NC}"
+git clone https://github.com/awade12/dbforge-api.git
+cd dbforge-api
+
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}Docker is not installed. Installing Docker...${NC}"
     curl -fsSL https://get.docker.com -o get-docker.sh
@@ -26,7 +36,6 @@ echo -e "${GREEN}Obtaining SSL certificate for $DOMAIN_NAME...${NC}"
 sudo certbot certonly --standalone -d $DOMAIN_NAME
 
 echo -e "${GREEN}Building Docker image...${NC}"
-cd "$(dirname "$0")/.."
 sudo docker build -t clidb-api .
 
 CONTAINER_ID=$(docker ps -q --filter "name=clidb-api")
