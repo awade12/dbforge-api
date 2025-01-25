@@ -33,44 +33,6 @@ if ! command -v docker &> /dev/null; then
     rm get-docker.sh
 fi
 
-# Install certbot
-if ! command -v certbot &> /dev/null; then
-    echo -e "${RED}Certbot is not installed. Installing Certbot...${NC}"
-    sudo apt-get update
-    sudo apt-get install -y certbot python3-certbot-nginx
-fi
-
-# Domain name prompt with validation
-DOMAIN_NAME=""
-while true; do
-    echo -e "${GREEN}Please enter your domain name:${NC}"
-    read -p "Domain (e.g., example.com): " DOMAIN_NAME
-    if [ -z "$DOMAIN_NAME" ]; then
-        echo -e "${RED}Domain name cannot be empty. Please try again.${NC}"
-        continue
-    fi
-    echo -e "${GREEN}You entered: $DOMAIN_NAME${NC}"
-    read -p "Is this correct? (y/n): " confirm
-    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-        break
-    fi
-done
-
-# Ensure domain name is set before proceeding
-if [ -z "$DOMAIN_NAME" ]; then
-    echo -e "${RED}Error: Domain name not set. Exiting.${NC}"
-    exit 1
-fi
-
-# Stop nginx temporarily for certbot
-if systemctl is-active --quiet nginx; then
-    echo -e "${GREEN}Stopping nginx for SSL certificate generation...${NC}"
-    sudo systemctl stop nginx
-fi
-
-echo -e "${GREEN}Obtaining SSL certificate for $DOMAIN_NAME...${NC}"
-sudo certbot certonly --standalone --non-interactive --agree-tos --email admin@$DOMAIN_NAME -d $DOMAIN_NAME
-
 echo -e "${GREEN}Building Docker image...${NC}"
 sudo docker build -t clidb-api .
 
@@ -82,20 +44,18 @@ if [ ! -z "$CONTAINER_ID" ]; then
     sudo docker rm $CONTAINER_ID
 fi
 
-echo -e "${GREEN}Starting container with SSL...${NC}"
+echo -e "${GREEN}Starting container...${NC}"
 sudo docker run -d \
     --name clidb-api \
     --privileged \
-    -p 443:3943 \
-    -v /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem:/app/cert/fullchain.pem \
-    -v /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem:/app/cert/privkey.pem \
+    -p 80:3943 \
     clidb-api
 
-echo -e "${GREEN}Installation complete!${NC}"
-echo -e "Your application is now running at https://$DOMAIN_NAME"
-echo -e "Please make sure your domain's DNS is properly configured to point to this server."
+# Get server IP address
+SERVER_IP=$(curl -s ifconfig.me)
 
-# Add certbot renewal cron job
-(crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet") | crontab -
+echo -e "${GREEN}Installation complete!${NC}"
+echo -e "Your API is now running at http://$SERVER_IP"
+echo -e "Access the API documentation at http://$SERVER_IP/docs"
 
 # curl -sSL https://data.wadedesignco.com/storage/v1/object/public/metalove/installer.sh | sudo bash
