@@ -13,6 +13,12 @@ if ! command -v git &> /dev/null; then
     sudo apt-get install -y git
 fi
 
+# Check if directory exists and handle appropriately
+if [ -d "dbforge-api" ]; then
+    echo -e "${RED}Directory dbforge-api already exists. Removing...${NC}"
+    sudo rm -rf dbforge-api
+fi
+
 # Clone the repository
 echo -e "${GREEN}Cloning repository...${NC}"
 git clone https://github.com/awade12/dbforge-api.git
@@ -35,12 +41,11 @@ if ! command -v certbot &> /dev/null; then
 fi
 
 # Domain name prompt with validation
-while true; do
+DOMAIN_NAME=""
+while [ -z "$DOMAIN_NAME" ]; do
     read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
     if [ -z "$DOMAIN_NAME" ]; then
         echo -e "${RED}Domain name cannot be empty. Please try again.${NC}"
-    else
-        break
     fi
 done
 

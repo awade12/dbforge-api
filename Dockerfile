@@ -15,14 +15,18 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Create and activate virtual environment, then install dependencies
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
 
 # Expose the port the app runs on
 EXPOSE 3943
+
+# Use the virtual environment's Python
+ENV PATH="/opt/venv/bin:$PATH"
 
 ENTRYPOINT ["dockerd-entrypoint.sh"]
 CMD ["python3", "run.py"]
