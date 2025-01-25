@@ -48,6 +48,7 @@ echo -e "${GREEN}Starting container...${NC}"
 sudo docker run -d \
     --name clidb-api \
     --privileged \
+    -v /var/run/docker.sock:/var/run/docker.sock \
     -p 80:3943 \
     clidb-api
 

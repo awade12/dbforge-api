@@ -1,35 +1,27 @@
-FROM docker:dind
+FROM python:3.9-slim
 
-# Install Python and required system dependencies
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    gcc \
-    python3-dev \
-    musl-dev \
-    linux-headers
+# Install system dependencies and Docker client
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://get.docker.com -o get-docker.sh && \
+    sh get-docker.sh && \
+    rm get-docker.sh && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .
-
-# Create and activate virtual environment, then install dependencies
-RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
 
-# Expose the port the app runs on
+# Expose the port
 EXPOSE 3943
 
-# Use the virtual environment's Python
-ENV PATH="/opt/venv/bin:$PATH"
-
-ENTRYPOINT ["dockerd-entrypoint.sh"]
-CMD ["python3", "run.py"]
+CMD ["python", "run.py"]
 
 
 ### docker build -t fastapi-docker-app .
