@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 import subprocess
 from typing import Dict
 import docker
+import requests
 
 docker_router = APIRouter()
 
@@ -180,30 +181,56 @@ def docker_status() -> Dict:
         }
     
     try:
-        # Try different connection methods
-        try:
-            # Try local socket first
-            client = docker.from_env()
-            info = client.info()
-        except docker.errors.DockerException:
+        # Try different connection methods in order
+        connection_methods = [
+            lambda: docker.from_env(),
+            lambda: docker.DockerClient(base_url='unix://var/run/docker.sock'),
+            lambda: docker.DockerClient(base_url='tcp://localhost:2375'),
+            lambda: docker.DockerClient(base_url='http://localhost:2375'),
+            lambda: docker.DockerClient(base_url='http://127.0.0.1:2375')
+        ]
+        
+        client = None
+        last_error = None
+        
+        for method in connection_methods:
             try:
-                # Try TCP connection
-                client = docker.DockerClient(base_url='tcp://localhost:2375')
-                info = client.info()
-            except docker.errors.DockerException:
-                # Try Unix socket explicitly
-                client = docker.DockerClient(base_url='unix://var/run/docker.sock')
-                info = client.info()
+                client = method()
+                # Test the connection
+                client.ping()
+                break
+            except (docker.errors.DockerException, requests.exceptions.RequestException) as e:
+                last_error = e
+                continue
+        
+        if client is None:
+            return {
+                "status": "error",
+                "message": f"Failed to connect to Docker daemon: {str(last_error)}. Please ensure Docker service is running and properly configured."
+            }
             
+        # Get Docker info
+        info = client.info()
+        
+        # Get list of containers
+        containers = client.containers.list(all=True)
+        running_containers = [c for c in containers if c.status == 'running']
+        
         return {
             "status": "running",
             "version": info.get("ServerVersion"),
             "containers": {
-                "total": info.get("Containers", 0),
-                "running": info.get("ContainersRunning", 0),
-                "stopped": info.get("ContainersStopped", 0)
+                "total": len(containers),
+                "running": len(running_containers),
+                "stopped": len(containers) - len(running_containers)
             },
-            "images": info.get("Images", 0)
+            "images": len(client.images.list()),
+            "api_version": client.api.version()["ApiVersion"],
+            "os": info.get("OperatingSystem"),
+            "kernel_version": info.get("KernelVersion"),
+            "cpu_count": info.get("NCPU"),
+            "total_memory": info.get("MemTotal"),
+            "docker_root_dir": info.get("DockerRootDir")
         }
     except Exception as e:
         return {
