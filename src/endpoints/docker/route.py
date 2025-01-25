@@ -181,33 +181,49 @@ def docker_status() -> Dict:
         }
     
     try:
-        # Try different connection methods in order
-        connection_methods = [
-            lambda: docker.from_env(),
-            lambda: docker.DockerClient(base_url='unix://var/run/docker.sock'),
-            lambda: docker.DockerClient(base_url='tcp://localhost:2375'),
-            lambda: docker.DockerClient(base_url='http://localhost:2375'),
-            lambda: docker.DockerClient(base_url='http://127.0.0.1:2375')
-        ]
+        # First, ensure the Docker socket has the right permissions
+        try:
+            subprocess.run("sudo chmod 666 /var/run/docker.sock", shell=True, check=True)
+        except subprocess.CalledProcessError:
+            pass  # Ignore if we can't change permissions
         
-        client = None
-        last_error = None
-        
-        for method in connection_methods:
+        # Try to connect using the socket first
+        try:
+            client = docker.DockerClient(base_url='unix://var/run/docker.sock')
+            # Test the connection
+            client.ping()
+        except (docker.errors.DockerException, requests.exceptions.RequestException) as e:
+            # If socket connection fails, try to reconfigure Docker daemon
             try:
-                client = method()
-                # Test the connection
+                # Create daemon.json with proper configuration
+                docker_daemon_config = {
+                    "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"],
+                    "log-driver": "json-file",
+                    "log-opts": {
+                        "max-size": "10m",
+                        "max-file": "3"
+                    }
+                }
+                
+                # Update daemon configuration
+                subprocess.run("sudo mkdir -p /etc/docker", shell=True, check=True)
+                import json
+                with open("/tmp/daemon.json", "w") as f:
+                    json.dump(docker_daemon_config, f, indent=4)
+                subprocess.run("sudo mv /tmp/daemon.json /etc/docker/daemon.json", shell=True, check=True)
+                
+                # Restart Docker daemon
+                subprocess.run("sudo systemctl daemon-reload", shell=True, check=True)
+                subprocess.run("sudo systemctl restart docker", shell=True, check=True)
+                
+                # Try to connect again after reconfiguration
+                client = docker.DockerClient(base_url='unix://var/run/docker.sock')
                 client.ping()
-                break
-            except (docker.errors.DockerException, requests.exceptions.RequestException) as e:
-                last_error = e
-                continue
-        
-        if client is None:
-            return {
-                "status": "error",
-                "message": f"Failed to connect to Docker daemon: {str(last_error)}. Please ensure Docker service is running and properly configured."
-            }
+            except Exception as config_error:
+                return {
+                    "status": "error",
+                    "message": f"Failed to configure and connect to Docker daemon: {str(config_error)}"
+                }
             
         # Get Docker info
         info = client.info()
@@ -230,7 +246,8 @@ def docker_status() -> Dict:
             "kernel_version": info.get("KernelVersion"),
             "cpu_count": info.get("NCPU"),
             "total_memory": info.get("MemTotal"),
-            "docker_root_dir": info.get("DockerRootDir")
+            "docker_root_dir": info.get("DockerRootDir"),
+            "connection_type": "unix socket"
         }
     except Exception as e:
         return {
